@@ -1,3 +1,11 @@
+# conda env: navigation
+# sample terminal command:
+# for i in {2..7}; do python3 main.py --invert True --regularizer torus --regtype 1 --regpower DoG --dog_ablation $i --savefile dogablation$i; done
+# for i in {0..7}; do python3 main.py --regularizer standard --regtype 1 --regpower mean --savefile newmeanl1$i; done
+# for i in {0..7}; do python3 main.py --savefile newnoreg$i; do python3 main.py --invert True --regularizer torus6 --regtype 1 --regpower DoG --savefile newtorus6l1dog$i; do python3 main.py --invert True --regularizer circle --regtype 1 --regpower DoG --savefile newcirclel1dog$i; done
+
+
+
 import numpy as np
 import torch.cuda
 import torch
@@ -9,9 +17,7 @@ import time
 
 
 
-from utils import generate_run_ID
-from place_cells import PlaceCells
-from trajectory_generator import TrajectoryGenerator
+from addinggenerator import TrajectoryGenerator
 from model1 import RNN
 from trainer import Trainer
 import sparsevalid_total as sparsevalid
@@ -96,7 +102,7 @@ parser.add_argument('--regtype',
 parser.add_argument('--savefile',
                     default='_loss_sets')
 parser.add_argument('--save_repo',
-                    default='graphs/',
+                    default='Graphs/trainembed/',
                     help='Folder the save file goes into')
 parser.add_argument('--invert',
                     default = False,
@@ -111,7 +117,6 @@ parser.add_argument('--target_perc',
 
 
 options = parser.parse_args()
-options.run_ID = generate_run_ID(options)
 
 print(f'Using device: {options.device}')
 
@@ -121,12 +126,8 @@ def compute_sparsity(x):
 
 
 
-place_cells = PlaceCells(options)
-if options.RNN_type == 'RNN':
-    model = RNN(options, place_cells)
-elif options.RNN_type == 'LSTM':
-    # model = LSTM(options, place_cells)
-    raise NotImplementedError
+model = RNN(options, place_cells)
+
 
 # Put model on GPU if using GPU
 model = model.to(options.device)
@@ -145,7 +146,31 @@ if options.trainembed:
     torch.save(model.embed, 'models/embeddings/' + options.savefile + '.pt')
     
 
-# Validate Sparseness
-#model.load_state_dict(torch.load('models/bestachieved' + options.savefile + '.pt'))
-#valid = sparsevalid.SparseValidator(options, model, trajectory_generator)
+
+
+
+# Load lottery sparse architecture
+ckpt_dir = os.path.join(options.save_dir, options.run_ID)
+savefile = os.path.join(ckpt_dir, 'most_recent_model.pth')
+model = RNN(options, place_cells).to(options.device)
+myparams = ((model.encoder, 'weight'),
+            (model.RNN, 'weight_hh_l0'),
+            (model.RNN, 'weight_ih_l0'),
+            (model.decoder, 'weight'))
+prune.global_unstructured(myparams,
+                          pruning_method = prune.L1Unstructured,
+                          amount=.5)
+wts = torch.load(savefile)
+wts_trimmed = {k:v for k, v in wts.items() if k.endswith('mask')}
+model.load_state_dict(wts_trimmed, strict=False)
+model.RNN.flatten_parameters()
+trainer = Trainer(options, model, trajectory_generator)
+
+start_lottery = time.time()
+trainer.train_sp(options, n_epochs=options.n_epochs, n_steps=options.n_steps)
+elapsed = time.time() - start_lottery
+with open(options.save_repo + options.savefile + '.txt', 'a') as the_file:
+    the_file.write('TOTAL LOTTERY TIME: {}\n'.format(elapsed))
+
+#valid = sparsevalid.SparseValidator(options, model, trajectory_generator2)
 #valid.test(options, n_epochs = 1, n_steps = 5)
