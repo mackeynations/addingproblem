@@ -20,7 +20,7 @@ import time
 from addinggenerator import TrajectoryGenerator
 from model1 import RNN
 from trainer import Trainer
-import sparsevalid_total as sparsevalid
+#import sparsevalid_total as sparsevalid
 
 import argparse
 
@@ -29,17 +29,19 @@ parser.add_argument('--save_dir',
                     default='models/',
                     help='directory to save trained models')
 parser.add_argument('--n_epochs',
-                    default=30,
+                    default=1500,
                     type=int,
                     help='number of training epochs')
 parser.add_argument('--n_steps',
                     default=1000,
                     help='batches per epoch')
 parser.add_argument('--batch_size',
-                    default=200,
+                    default=512,
+                    type=int,
                     help='number of trajectories per batch')
-parser.add_argument('--sequence_length',
-                    default=50,
+parser.add_argument('--seq_length',
+                    default=10,
+                    type=int,
                     help='number of steps in trajectory')
 parser.add_argument('--learning_rate',
                     default=1e-4,
@@ -48,8 +50,8 @@ parser.add_argument('--learning_rate',
 parser.add_argument('--Np',
                     default=512,
                     help='number of place cells')
-parser.add_argument('--Ng',
-                    default=4096,
+parser.add_argument('--nhid',
+                    default=100,
                     help='number of grid cells')
 parser.add_argument('--place_cell_rf',
                     default=0.12,
@@ -61,7 +63,7 @@ parser.add_argument('--RNN_type',
                     default='RNN',
                     help='RNN or LSTM')
 parser.add_argument('--activation',
-                    default='relu',
+                    default='tanh',
                     help='recurrent nonlinearity')
 parser.add_argument('--weight_decay',
                     type=float,
@@ -102,7 +104,7 @@ parser.add_argument('--regtype',
 parser.add_argument('--savefile',
                     default='_loss_sets')
 parser.add_argument('--save_repo',
-                    default='Graphs/trainembed/',
+                    default='graphs/',
                     help='Folder the save file goes into')
 parser.add_argument('--invert',
                     default = False,
@@ -114,6 +116,9 @@ parser.add_argument('--trainembed',
 parser.add_argument('--target_perc',
                     type=float,
                     default=90)
+parser.add_argument('--nlayers',
+                    type=int,
+                    default=2)
 
 
 options = parser.parse_args()
@@ -126,13 +131,13 @@ def compute_sparsity(x):
 
 
 
-model = RNN(options, place_cells)
+model = RNN(options)
 
 
 # Put model on GPU if using GPU
 model = model.to(options.device)
 
-trajectory_generator = TrajectoryGenerator(options, place_cells)
+trajectory_generator = TrajectoryGenerator(options)
 
 trainer = Trainer(options, model, trajectory_generator)
 
@@ -152,7 +157,7 @@ if options.trainembed:
 # Load lottery sparse architecture
 ckpt_dir = os.path.join(options.save_dir, options.run_ID)
 savefile = os.path.join(ckpt_dir, 'most_recent_model.pth')
-model = RNN(options, place_cells).to(options.device)
+model = RNN(options).to(options.device)
 myparams = ((model.encoder, 'weight'),
             (model.RNN, 'weight_hh_l0'),
             (model.RNN, 'weight_ih_l0'),

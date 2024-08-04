@@ -71,7 +71,7 @@ def ripple(x):
 class regularizer(object):
     def __init__(self, options, embed=None):
         
-        self.Ng = options.Ng
+        self.Ng = options.nhid
         self.reg = torch.zeros(self.Ng, self.Ng).to(options.device)
         self.moduli = options.regularizer
         self.regpower = options.regpower

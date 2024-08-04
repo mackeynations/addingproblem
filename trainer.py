@@ -15,11 +15,11 @@ class Trainer(object):
     def __init__(self, options, model, trajectory_generator, restore=False):
         self.options = options
         self.model = model
-        self.Ng = options.Ng
+        self.Ng = options.nhid
         self.savefile = options.savefile
         self.trajectory_generator = trajectory_generator
         lr = options.learning_rate
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
         self.criterion = nn.MSELoss()
         self.save_repo = options.save_repo
         self.device=options.device
@@ -31,7 +31,7 @@ class Trainer(object):
         self.besterr = np.Inf
 
         # Set up checkpoints
-        self.ckpt_dir = os.path.join(options.save_dir, options.run_ID)
+        self.ckpt_dir = options.save_dir
         ckpt_path = os.path.join(self.ckpt_dir, 'most_recent_model.pth')
         if restore and os.path.isdir(self.ckpt_dir) and os.path.isfile(ckpt_path):
             self.model.load_state_dict(torch.load(ckpt_path))
@@ -60,11 +60,14 @@ class Trainer(object):
         
         out = self.model(x)
         loss = self.criterion(out, y)
-        if err < self.besterr and not isnan(loss):
-            self.besterr = err
+        if loss < self.besterr and not isnan(loss):
+            self.besterr = loss
             torch.save(self.model.state_dict(), 'models/bestachieved' + self.savefile + '.pt')
 
         loss.backward()
+        
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.)
+        
         self.optimizer.step()
         
         if self.options.trainembed == True:
@@ -98,17 +101,17 @@ class Trainer(object):
         for epoch_idx in range(n_epochs):
             for step_idx in range(n_steps):
                 x, y = next(gen)
-                x, y = x.to(device), y.to(device)
-                output = self.train_step(x, y)
+                x, y = x.to(self.device), y.to(self.device)
+                loss = self.train_step(x, y)
                 self.loss.append(loss)
 
                 # Log error rate to progress bar
                 # tbar.set_description('Error = ' + str(np.int(100*err)) + 'cm')
                 if step_idx % 100 == 0:
                     sparsity = (torch.sum(torch.where(torch.abs(self.model.RNN.weight_hh_l0.data) < .001, 1.0, 0.0))/(self.Ng**2)).item()
-                    print('Epoch: {}. Loss: {}. Err: {}cm, Sparsity: {:.3f}.'.format(
+                    print('Epoch: {}. Loss: {}. Sparsity: {:.3f}.'.format(
                         1000*epoch_idx + step_idx,
-                        np.round(loss, 3), np.round(100 * err, 2), sparsity))
+                        np.round(loss, 3), sparsity))
                     with open(self.save_repo + self.savefile + '.txt', 'a') as the_file:
                         the_file.write('Lottery: {}. Loss: {}. Sparsity: {:.3f}\n'.format(1000*epoch_idx + step_idx, np.round(loss, 3), sparsity))
 
@@ -141,13 +144,11 @@ class Trainer(object):
 
         # tbar = tqdm(range(n_steps), leave=False)
         for epoch_idx in range(n_epochs):
-            params_to_prune = ((self.model.encoder, 'weight'),
-                               (self.model.RNN, 'weight_hh_l0'),
+            params_to_prune = ((self.model.RNN, 'weight_hh_l0'),
                                (self.model.RNN, 'weight_ih_l0'),
                                (self.model.decoder, 'weight'))
             
             if epoch_idx > 1:
-                prune.remove(self.model.encoder, 'weight')
                 prune.remove(self.model.RNN, 'weight_hh_l0')
                 prune.remove(self.model.RNN, 'weight_ih_l0')
                 prune.remove(self.model.decoder, 'weight')
@@ -158,17 +159,17 @@ class Trainer(object):
                                           amount=self.target_perc*(epoch_idx)/(100*(n_epochs-1)))
             for step_idx in range(n_steps):
                 x, y = next(gen)
-                x, y = x.to(device), y.to(device)
-                output = self.train_step(x, y)
+                x, y = x.to(self.device), y.to(self.device)
+                loss = self.train_step(x, y)
                 self.loss.append(loss)
 
                 # Log error rate to progress bar
                 # tbar.set_description('Error = ' + str(np.int(100*err)) + 'cm')
                 if step_idx % 100 == 0:
                     sparsity = (torch.sum(torch.where(torch.abs(self.model.RNN.weight_hh_l0.data) < .001, 1.0, 0.0))/(self.Ng**2)).item()
-                    print('Epoch: {}. Loss: {}. Err: {}cm, Sparsity: {:.3f}.'.format(
+                    print('Epoch: {}. Loss: {}. Sparsity: {:.3f}.'.format(
                         1000*epoch_idx + step_idx,
-                        np.round(loss, 3), np.round(100 * err, 2), sparsity))
+                        np.round(loss, 3), sparsity))
                     with open(self.save_repo + self.savefile + '.txt', 'a') as the_file:
                         the_file.write('Epoch: {}. Loss: {}. Sparsity: {:.3f}\n'.format(1000*epoch_idx + step_idx, np.round(loss, 3), sparsity))
 

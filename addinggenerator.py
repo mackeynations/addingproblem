@@ -5,7 +5,7 @@ import random
 class TrajectoryGenerator(object):
     """ This class creates the input data for the model: pairs of trajectories at different times, and with shuffled coords """
     def __init__(self, args, distr='uniform'):
-        self.batchsize = args.batchsize
+        self.batchsize = args.batch_size
         self.seq_length = args.seq_length
         self.distr = distr
         
@@ -13,15 +13,15 @@ class TrajectoryGenerator(object):
         
     def generate_trajectory(self):
         if self.distr == 'normal':
-            velos = .15*torch.randn(1, self.seq_length, 2)
+            velos = .15*torch.randn(self.batchsize, self.seq_length)
         elif self.distr == 'uniform':
-            velos = torch.rand(self.batchsize, self.seq_length, 2)
+            velos = torch.rand(self.batchsize, self.seq_length)
             
         mask = torch.zeros(self.batchsize, self.seq_length)
         mask[:,:2] = torch.ones(self.batchsize, 2)
         permutations = torch.rand(self.batchsize, self.seq_length).argsort(dim=1)
         permuted_tensor = mask.gather(1, permutations)
-        return torch.stack((velos, permuted_tensor), dim=2)
+        return torch.stack((velos, permuted_tensor), dim=2), torch.sum(velos*permuted_tensor, dim=1)
         
     
     def get_generator(self):
